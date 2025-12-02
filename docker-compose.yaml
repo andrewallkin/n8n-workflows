@@ -3,8 +3,7 @@ services:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n
     restart: unless-stopped
-    ports:
-      - "5678:5678"
+    # 🛑 REMOVED: ports mapping 5678:5678. Caddy handles external access.
     environment:
       - GENERIC_TIMEZONE=Africa/Johannesburg
       - TZ=Africa/Johannesburg
@@ -17,10 +16,12 @@ services:
       - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
       - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
       - N8N_BASIC_AUTH_ACTIVE=true
+      - WEBHOOK_URL=https://n8n-test.andrewallkin.cloud/ # 💡 NEW: Temporary testing domain
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
-      - backend-net
+      - web-proxy-net # 👈 Joins the external Caddy network
+      - local-net # 👈 Connects to Postgres
 
   postgres-db:
     image: postgres:16-alpine
@@ -30,12 +31,11 @@ services:
       POSTGRES_USER: ${DB_POSTGRESDB_USER}
       POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD}
       POSTGRES_DB: ${DB_POSTGRESDB_DATABASE}
-    ports:
-      - "5432:5432"
+    # 🛑 REMOVED: ports mapping 5432:5432. Keeps DB internal.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - backend-net
+      - local-net # 👈 Connects only to n8n
 
 volumes:
   n8n_data:
@@ -44,5 +44,7 @@ volumes:
     name: n8n_workflows_postgres_data
 
 networks:
-  backend-net:
+  local-net: # Local network for internal n8n <-> Postgres traffic
     driver: bridge
+  web-proxy-net: # External network to connect n8n to Caddy
+    external: true # 💡 NEW: References the network created on the VPS

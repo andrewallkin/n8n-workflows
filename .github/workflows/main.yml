@@ -31,33 +31,35 @@ jobs:
           echo "Changing directory to /srv/apps"
           cd /srv/apps || { echo "Failed to change directory to /srv/apps"; exit 1; }
 
-          echo "Checking if project directory '/srv/apps/\${REPO_NAME}' exists..."
-          if [ -d "\${REPO_NAME}" ]; then
-            echo "Deleting existing project directory '/srv/apps/\${REPO_NAME}'"
-            rm -rf "\${REPO_NAME}" || { echo "Failed to delete existing project directory"; exit 1; }
+          if [ ! -d "\${REPO_NAME}/.git" ]; then
+            echo "Project directory '/srv/apps/\${REPO_NAME}' does not contain a git repo. Recreating and cloning..."
+            rm -rf "\${REPO_NAME}" || true
+            mkdir -p "\${REPO_NAME}" || { echo "Failed to create project directory"; exit 1; }
+            cd "\${REPO_NAME}" || { echo "Failed to change directory to project directory"; exit 1; }
+
+            echo "Cloning the current GitHub repository into /srv/apps/\${REPO_NAME}"
+            git clone https://${{ secrets.GH_USERNAME }}:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git . || { echo "Failed to clone repository"; exit 1; }
+          else
+            echo "Existing git repo detected in '/srv/apps/\${REPO_NAME}'. Updating from origin..."
+            cd "\${REPO_NAME}" || { echo "Failed to change directory to project directory"; exit 1; }
+            git fetch origin || { echo "Failed to fetch from origin"; exit 1; }
+            git reset --hard origin/main || { echo "Failed to reset to origin/main"; exit 1; }
           fi
 
-          echo "Creating project directory '/srv/apps/\${REPO_NAME}'"
-          mkdir -p "\${REPO_NAME}" || { echo "Failed to create project directory"; exit 1; }
-
-          echo "Changing directory to /srv/apps/\${REPO_NAME}"
-          cd "\${REPO_NAME}" || { echo "Failed to change directory to project directory"; exit 1; }
-
-          echo "Cloning the current GitHub repository into /srv/apps/\${REPO_NAME}"
-          git clone https://${{ secrets.GH_USERNAME }}:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git . || { echo "Failed to clone repository"; exit 1; }
-
           echo "Stopping and removing existing Docker containers (if any)..."
-          docker compose down || echo "Docker compose down failed or no containers to stop"
+          # Use --remove-orphans to clean up services no longer in the compose file
+          docker compose down --remove-orphans || true 
 
           echo "Cleaning up unused Docker resources..."
-          docker image prune -a -f || echo "Docker image prune failed"
-          docker builder prune -a -f || echo "Docker builder prune failed"
+          docker image prune -a -f || true
+          docker builder prune -a -f || true
 
           echo "Building Docker containers..."
           docker compose build || { echo "Docker compose build failed"; exit 1; }
 
           echo "Starting Docker containers..."
-          docker compose up -d || { echo "Docker compose up failed"; exit 1; }
+          # Force recreate ensures network changes and environment variables are picked up
+          docker compose up -d --force-recreate || { echo "Docker compose up failed"; exit 1; }
 
           echo "Deployment complete."
           EOF
