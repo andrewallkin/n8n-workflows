@@ -4,31 +4,38 @@ services:
     container_name: n8n
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678" # Expose only on localhost for nginx reverse proxy
     environment:
       - GENERIC_TIMEZONE=Africa/Johannesburg
       - TZ=Africa/Johannesburg
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
+      - DB_TYPE=${DB_TYPE}
+      - DB_POSTGRESDB_HOST=postgres-db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
+      - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
+      - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - WEBHOOK_URL=https://automations.andrewallkin.cloud/
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
-      - backend-net
+      - local-net # Connects to Postgres
 
   postgres-db:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: postgres-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: n8n_workflows_data
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${DB_POSTGRESDB_USER}
+      POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD}
+      POSTGRES_DB: ${DB_POSTGRESDB_DATABASE}
+    # 🛑 REMOVED: ports mapping 5432:5432. Keeps DB internal.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - backend-net
+      - local-net # 👈 Connects only to n8n
 
 volumes:
   n8n_data:
@@ -37,5 +44,5 @@ volumes:
     name: n8n_workflows_postgres_data
 
 networks:
-  backend-net:
+  local-net: # Local network for internal n8n <-> Postgres traffic
     driver: bridge
